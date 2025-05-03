@@ -19,11 +19,13 @@ namespace Zil
         private string currentProfile = "Default";
         private Timer timer = new Timer();
         private const string profilesDirectory = "Schedules";
+        private const string musicDirectory = "Music";
 
         public ZilForm()
         {
             InitializeComponent();
-            Directory.CreateDirectory(profilesDirectory);
+            Directory.CreateDirectory(Path.Combine(Application.StartupPath, profilesDirectory));
+            Directory.CreateDirectory(Path.Combine(Application.StartupPath, musicDirectory));
             LoadProfiles();
             SetupForm();
             SetupTimer();
@@ -60,11 +62,7 @@ namespace Zil
         {
             if (currentProfile == "Default")
             {
-                profileComboBox.Items.Clear();
-                profileComboBox.SelectedItem = "Default";
-                currentProfile = "Default";
-                SaveProfiles();
-                UpdateScheduleList();
+                MessageBox.Show("Cannot delete the Default profile.");
                 return;
             }
 
@@ -72,7 +70,7 @@ namespace Zil
             {
                 // Remove profile and its JSON file
                 scheduleProfiles.Remove(currentProfile);
-                string profileFile = Path.Combine(profilesDirectory, $"{currentProfile}.json");
+                string profileFile = Path.Combine(Application.StartupPath, profilesDirectory, $"{currentProfile}.json");
                 if (File.Exists(profileFile))
                 {
                     File.Delete(profileFile);
@@ -96,8 +94,22 @@ namespace Zil
                 openFileDialog.Filter = "MP3 files (*.mp3)|*.mp3";
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    selectFileButton.Tag = openFileDialog.FileName;
-                    selectFileButton.Text = Path.GetFileName(openFileDialog.FileName);
+                    try
+                    {
+                        // Copy MP3 to Music directory
+                        string fileName = Path.GetFileName(openFileDialog.FileName);
+                        string destPath = Path.Combine(Application.StartupPath, musicDirectory, fileName);
+                        File.Copy(openFileDialog.FileName, destPath, true);
+
+                        // Store relative path
+                        string relativePath = Path.Combine(musicDirectory, fileName);
+                        selectFileButton.Tag = relativePath;
+                        selectFileButton.Text = fileName;
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error copying MP3 file: {ex.Message}");
+                    }
                 }
             }
         }
@@ -105,6 +117,48 @@ namespace Zil
         private void addButton_Click(object sender, EventArgs e)
         {
             AddSchedule(timePicker.Value, selectFileButton.Tag?.ToString());
+        }
+
+        private void editButton_Click(object sender, EventArgs e)
+        {
+            if (scheduleList.SelectedIndex < 0)
+            {
+                MessageBox.Show("Please select a schedule to edit.");
+                return;
+            }
+
+            string relativeFilePath = selectFileButton.Tag?.ToString();
+            if (string.IsNullOrEmpty(relativeFilePath))
+            {
+                // Use existing file path if no new MP3 is selected
+                relativeFilePath = scheduleProfiles[currentProfile][scheduleList.SelectedIndex].FilePath;
+            }
+            else
+            {
+                // Validate new MP3 file
+                string fullFilePath = Path.Combine(Application.StartupPath, relativeFilePath);
+                if (!File.Exists(fullFilePath))
+                {
+                    MessageBox.Show("The selected MP3 file does not exist in the Music directory.");
+                    return;
+                }
+            }
+
+            // Update the selected schedule
+            scheduleProfiles[currentProfile][scheduleList.SelectedIndex] = new MusicSchedule
+            {
+                Time = timePicker.Value,
+                FilePath = relativeFilePath
+            };
+
+            // Sort schedules by time
+            scheduleProfiles[currentProfile] = scheduleProfiles[currentProfile]
+                .OrderBy(s => s.Time.Hour)
+                .ThenBy(s => s.Time.Minute)
+                .ToList();
+
+            SaveProfiles();
+            UpdateScheduleList();
         }
 
         private void deleteButton_Click(object sender, EventArgs e)
@@ -136,21 +190,27 @@ namespace Zil
             timer.Start();
         }
 
-        private void AddSchedule(DateTime time, string filePath)
+        private void AddSchedule(DateTime time, string relativeFilePath)
         {
-            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            if (string.IsNullOrEmpty(relativeFilePath))
             {
                 MessageBox.Show("Please select a valid MP3 file.");
                 return;
             }
 
-            // Ensure at least 20 schedules can be added (checking for daily coverage)
+            // Resolve full path to check existence
+            string fullFilePath = Path.Combine(Application.StartupPath, relativeFilePath);
+            if (!File.Exists(fullFilePath))
+            {
+                MessageBox.Show("The selected MP3 file does not exist in the Music directory.");
+                return;
+            }
 
 
             scheduleProfiles[currentProfile].Add(new MusicSchedule
             {
                 Time = time,
-                FilePath = filePath
+                FilePath = relativeFilePath // Store relative path
             });
 
             // Sort schedules by time
@@ -175,11 +235,19 @@ namespace Zil
             }
         }
 
-        private void PlayMusic(string filePath)
+        private void PlayMusic(string relativeFilePath)
         {
             try
             {
-                using (var mp3Reader = new Mp3FileReader(filePath))
+                // Resolve full path
+                string fullFilePath = Path.Combine(Application.StartupPath, relativeFilePath);
+                if (!File.Exists(fullFilePath))
+                {
+                    MessageBox.Show($"MP3 file not found: {relativeFilePath}");
+                    return;
+                }
+
+                using (var mp3Reader = new Mp3FileReader(fullFilePath))
                 using (var waveOut = new WaveOutEvent())
                 {
                     waveOut.Init(mp3Reader);
@@ -200,11 +268,15 @@ namespace Zil
         private void LoadProfiles()
         {
             scheduleProfiles["Default"] = new List<MusicSchedule>();
-            foreach (var file in Directory.GetFiles(profilesDirectory, "*.json"))
+            string profilesPath = Path.Combine(Application.StartupPath, profilesDirectory);
+            if (Directory.Exists(profilesPath))
             {
-                var json = File.ReadAllText(file);
-                var profileName = Path.GetFileNameWithoutExtension(file);
-                scheduleProfiles[profileName] = JsonSerializer.Deserialize<List<MusicSchedule>>(json) ?? new List<MusicSchedule>();
+                foreach (var file in Directory.GetFiles(profilesPath, "*.json"))
+                {
+                    var json = File.ReadAllText(file);
+                    var profileName = Path.GetFileNameWithoutExtension(file);
+                    scheduleProfiles[profileName] = JsonSerializer.Deserialize<List<MusicSchedule>>(json) ?? new List<MusicSchedule>();
+                }
             }
         }
 
@@ -213,7 +285,8 @@ namespace Zil
             foreach (var profile in scheduleProfiles)
             {
                 var json = JsonSerializer.Serialize(profile.Value, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(Path.Combine(profilesDirectory, $"{profile.Key}.json"), json);
+                string profileFile = Path.Combine(Application.StartupPath, profilesDirectory, $"{profile.Key}.json");
+                File.WriteAllText(profileFile, json);
             }
         }
     }
@@ -222,6 +295,6 @@ namespace Zil
     public class MusicSchedule
     {
         public DateTime Time { get; set; }
-        public string FilePath { get; set; }
+        public string FilePath { get; set; } // Stores relative path (e.g., Music\filename.mp3)
     }
 }

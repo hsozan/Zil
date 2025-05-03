@@ -35,6 +35,7 @@
             this.selectFileButton = new System.Windows.Forms.Button();
             this.addButton = new System.Windows.Forms.Button();
             this.deleteButton = new System.Windows.Forms.Button();
+            this.editButton = new System.Windows.Forms.Button();
             this.scheduleList = new System.Windows.Forms.ListBox();
             this.SuspendLayout();
             // 
@@ -112,13 +113,24 @@
             this.deleteButton.UseVisualStyleBackColor = false;
             this.deleteButton.Click += new System.EventHandler(this.deleteButton_Click);
             // 
+            // editButton
+            // 
+            this.editButton.BackColor = System.Drawing.SystemColors.ActiveCaption;
+            this.editButton.Location = new System.Drawing.Point(480, 60);
+            this.editButton.Name = "editButton";
+            this.editButton.Size = new System.Drawing.Size(80, 23);
+            this.editButton.TabIndex = 7;
+            this.editButton.Text = "Düzenle";
+            this.editButton.UseVisualStyleBackColor = false;
+            this.editButton.Click += new System.EventHandler(this.editButton_Click);
+            // 
             // scheduleList
             // 
             this.scheduleList.FormattingEnabled = true;
             this.scheduleList.Location = new System.Drawing.Point(20, 100);
             this.scheduleList.Name = "scheduleList";
             this.scheduleList.Size = new System.Drawing.Size(540, 251);
-            this.scheduleList.TabIndex = 7;
+            this.scheduleList.TabIndex = 8;
             // 
             // ZilForm
             // 
@@ -126,6 +138,7 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(600, 400);
             this.Controls.Add(this.scheduleList);
+            this.Controls.Add(this.editButton);
             this.Controls.Add(this.deleteButton);
             this.Controls.Add(this.addButton);
             this.Controls.Add(this.selectFileButton);
@@ -136,7 +149,6 @@
             this.Name = "ZilForm";
             this.Text = "Bahçeşehir Zil";
             this.ResumeLayout(false);
-
         }
 
         #endregion
@@ -148,6 +160,7 @@
         private System.Windows.Forms.Button selectFileButton;
         private System.Windows.Forms.Button addButton;
         private System.Windows.Forms.Button deleteButton;
+        private System.Windows.Forms.Button editButton;
         private System.Windows.Forms.ListBox scheduleList;
     }
 }
