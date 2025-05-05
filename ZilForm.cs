@@ -18,8 +18,11 @@ namespace Zil
         private Dictionary<string, List<MusicSchedule>> scheduleProfiles = new Dictionary<string, List<MusicSchedule>>();
         private string currentProfile = "Default";
         private Timer timer = new Timer();
+        private bool isRunning = false;
         private const string profilesDirectory = "Schedules";
         private const string musicDirectory = "Music";
+        private const string anthemVocal = "Music\\Marş Sözlü_1.8dk.mp3";
+        private const string anthemInstrumental = "Music\\Marş Sözsüz.mp3";
 
         public ZilForm()
         {
@@ -37,138 +40,57 @@ namespace Zil
             profileComboBox.Items.AddRange(scheduleProfiles.Keys.ToArray());
             profileComboBox.SelectedItem = currentProfile;
 
-            // Update schedule list
-            UpdateScheduleList();
+            // Initialize schedule form in tab
+            ScheduleForm scheduleForm = new ScheduleForm(scheduleProfiles);
+            scheduleForm.TopLevel = false;
+            scheduleForm.FormBorderStyle = FormBorderStyle.None;
+            scheduleForm.Dock = DockStyle.Fill;
+            tabControl1.TabPages[1].Controls.Add(scheduleForm);
+            scheduleForm.Show();
+
+            // Initialize emergency form in tab
+            EmergencyForm emergencyForm = new EmergencyForm(scheduleProfiles);
+            emergencyForm.TopLevel = false;
+            emergencyForm.FormBorderStyle = FormBorderStyle.None;
+            emergencyForm.Dock = DockStyle.Fill;
+            tabControl1.TabPages[2].Controls.Add(emergencyForm);
+            emergencyForm.Show();
         }
 
         private void profileComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             currentProfile = profileComboBox.SelectedItem.ToString();
-            UpdateScheduleList();
         }
 
-        private void newProfileButton_Click(object sender, EventArgs e)
+        private void startButton_Click(object sender, EventArgs e)
         {
-            string newProfile = $"Profile_{scheduleProfiles.Count + 1}";
-            scheduleProfiles[newProfile] = new List<MusicSchedule>();
-            profileComboBox.Items.Add(newProfile);
-            profileComboBox.SelectedItem = newProfile;
-            currentProfile = newProfile;
-            SaveProfiles();
-            UpdateScheduleList();
-        }
-
-        private void deleteProfileButton_Click(object sender, EventArgs e)
-        {
-            if (currentProfile == "Default")
+            if (!scheduleProfiles.ContainsKey(currentProfile) || scheduleProfiles[currentProfile].Count == 0)
             {
-                MessageBox.Show("Cannot delete the Default profile.");
+                MessageBox.Show("Lütfen geçerli bir profil seçin ve zamanlamalar ekleyin.");
                 return;
             }
-
-            if (MessageBox.Show($"Are you sure you want to delete the '{currentProfile}' profile?", "Confirm Delete", MessageBoxButtons.YesNo) == DialogResult.Yes)
-            {
-                // Remove profile and its JSON file
-                scheduleProfiles.Remove(currentProfile);
-                string profileFile = Path.Combine(Application.StartupPath, profilesDirectory, $"{currentProfile}.json");
-                if (File.Exists(profileFile))
-                {
-                    File.Delete(profileFile);
-                }
-
-                // Switch to Default profile
-                currentProfile = "Default";
-                profileComboBox.Items.Clear();
-                profileComboBox.Items.AddRange(scheduleProfiles.Keys.ToArray());
-                profileComboBox.SelectedItem = currentProfile;
-
-                SaveProfiles();
-                UpdateScheduleList();
-            }
+            isRunning = true;
+            timer.Start();
+            startButton.Enabled = false;
+            stopButton.Enabled = true;
         }
 
-        private void selectFileButton_Click(object sender, EventArgs e)
+        private void stopButton_Click(object sender, EventArgs e)
         {
-            using (OpenFileDialog openFileDialog = new OpenFileDialog())
-            {
-                openFileDialog.Filter = "MP3 files (*.mp3)|*.mp3";
-                if (openFileDialog.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        // Copy MP3 to Music directory
-                        string fileName = Path.GetFileName(openFileDialog.FileName);
-                        string destPath = Path.Combine(Application.StartupPath, musicDirectory, fileName);
-                        File.Copy(openFileDialog.FileName, destPath, true);
-
-                        // Store relative path
-                        string relativePath = Path.Combine(musicDirectory, fileName);
-                        selectFileButton.Tag = relativePath;
-                        selectFileButton.Text = fileName;
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error copying MP3 file: {ex.Message}");
-                    }
-                }
-            }
+            isRunning = false;
+            timer.Stop();
+            startButton.Enabled = true;
+            stopButton.Enabled = false;
         }
 
-        private void addButton_Click(object sender, EventArgs e)
+        private void anthemVocalButton_Click(object sender, EventArgs e)
         {
-            AddSchedule(timePicker.Value, selectFileButton.Tag?.ToString());
+            PlayMusic(anthemVocal);
         }
 
-        private void editButton_Click(object sender, EventArgs e)
+        private void anthemInstrumentalButton_Click(object sender, EventArgs e)
         {
-            if (scheduleList.SelectedIndex < 0)
-            {
-                MessageBox.Show("Please select a schedule to edit.");
-                return;
-            }
-
-            string relativeFilePath = selectFileButton.Tag?.ToString();
-            if (string.IsNullOrEmpty(relativeFilePath))
-            {
-                // Use existing file path if no new MP3 is selected
-                relativeFilePath = scheduleProfiles[currentProfile][scheduleList.SelectedIndex].FilePath;
-            }
-            else
-            {
-                // Validate new MP3 file
-                string fullFilePath = Path.Combine(Application.StartupPath, relativeFilePath);
-                if (!File.Exists(fullFilePath))
-                {
-                    MessageBox.Show("The selected MP3 file does not exist in the Music directory.");
-                    return;
-                }
-            }
-
-            // Update the selected schedule
-            scheduleProfiles[currentProfile][scheduleList.SelectedIndex] = new MusicSchedule
-            {
-                Time = timePicker.Value,
-                FilePath = relativeFilePath
-            };
-
-            // Sort schedules by time
-            scheduleProfiles[currentProfile] = scheduleProfiles[currentProfile]
-                .OrderBy(s => s.Time.Hour)
-                .ThenBy(s => s.Time.Minute)
-                .ToList();
-
-            SaveProfiles();
-            UpdateScheduleList();
-        }
-
-        private void deleteButton_Click(object sender, EventArgs e)
-        {
-            if (scheduleList.SelectedIndex >= 0)
-            {
-                scheduleProfiles[currentProfile].RemoveAt(scheduleList.SelectedIndex);
-                SaveProfiles();
-                UpdateScheduleList();
-            }
+            PlayMusic(anthemInstrumental);
         }
 
         private void SetupTimer()
@@ -176,6 +98,7 @@ namespace Zil
             timer.Interval = 60000; // Check every minute
             timer.Tick += (s, e) =>
             {
+                if (!isRunning) return;
                 var now = DateTime.Now;
                 if (!scheduleProfiles.ContainsKey(currentProfile)) return;
 
@@ -187,63 +110,16 @@ namespace Zil
                     }
                 }
             };
-            timer.Start();
         }
 
-        private void AddSchedule(DateTime time, string relativeFilePath)
-        {
-            if (string.IsNullOrEmpty(relativeFilePath))
-            {
-                MessageBox.Show("Please select a valid MP3 file.");
-                return;
-            }
-
-            // Resolve full path to check existence
-            string fullFilePath = Path.Combine(Application.StartupPath, relativeFilePath);
-            if (!File.Exists(fullFilePath))
-            {
-                MessageBox.Show("The selected MP3 file does not exist in the Music directory.");
-                return;
-            }
-
-
-            scheduleProfiles[currentProfile].Add(new MusicSchedule
-            {
-                Time = time,
-                FilePath = relativeFilePath // Store relative path
-            });
-
-            // Sort schedules by time
-            scheduleProfiles[currentProfile] = scheduleProfiles[currentProfile]
-                .OrderBy(s => s.Time.Hour)
-                .ThenBy(s => s.Time.Minute)
-                .ToList();
-
-            SaveProfiles();
-            UpdateScheduleList();
-        }
-
-        private void UpdateScheduleList()
-        {
-            scheduleList.Items.Clear();
-            if (scheduleProfiles.ContainsKey(currentProfile))
-            {
-                foreach (var schedule in scheduleProfiles[currentProfile])
-                {
-                    scheduleList.Items.Add($"{schedule.Time:HH:mm} - {Path.GetFileName(schedule.FilePath)}");
-                }
-            }
-        }
-
-        private void PlayMusic(string relativeFilePath)
+        public void PlayMusic(string relativeFilePath)
         {
             try
             {
-                // Resolve full path
                 string fullFilePath = Path.Combine(Application.StartupPath, relativeFilePath);
                 if (!File.Exists(fullFilePath))
                 {
-                    MessageBox.Show($"MP3 file not found: {relativeFilePath}");
+                    MessageBox.Show($"MP3 dosyası bulunamadı: {relativeFilePath}");
                     return;
                 }
 
@@ -252,7 +128,6 @@ namespace Zil
                 {
                     waveOut.Init(mp3Reader);
                     waveOut.Play();
-                    // Wait for playback to complete
                     while (waveOut.PlaybackState == PlaybackState.Playing)
                     {
                         System.Threading.Thread.Sleep(100);
@@ -261,7 +136,7 @@ namespace Zil
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error playing MP3: {ex.Message}");
+                MessageBox.Show($"MP3 çalınırken hata oluştu: {ex.Message}");
             }
         }
 
@@ -277,16 +152,6 @@ namespace Zil
                     var profileName = Path.GetFileNameWithoutExtension(file);
                     scheduleProfiles[profileName] = JsonSerializer.Deserialize<List<MusicSchedule>>(json) ?? new List<MusicSchedule>();
                 }
-            }
-        }
-
-        private void SaveProfiles()
-        {
-            foreach (var profile in scheduleProfiles)
-            {
-                var json = JsonSerializer.Serialize(profile.Value, new JsonSerializerOptions { WriteIndented = true });
-                string profileFile = Path.Combine(Application.StartupPath, profilesDirectory, $"{profile.Key}.json");
-                File.WriteAllText(profileFile, json);
             }
         }
     }
